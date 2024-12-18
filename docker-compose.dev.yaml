@@ -17,7 +17,7 @@ services:
       - SERPER_API_KEY=${SERPER_API_KEY}
       - BING_API_KEY=${BING_API_KEY}
 
-      - OLLAMA_API_BASE=${OLLAMA_API_BASE:-http://host.docker.internal:11434}
+      - OLLAMA_API_BASE=${OLLAMA_API_BASE:-http://host.containers.internal:11434}
 
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_API_BASE=${OPENAI_API_BASE}
@@ -53,8 +53,6 @@ services:
           target: /workspace/src/backend
     networks:
       - farfalle-network
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
   frontend:
     depends_on:
