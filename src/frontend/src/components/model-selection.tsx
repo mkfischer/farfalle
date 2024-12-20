@@ -1,30 +1,12 @@
 "use client";
 import * as React from "react";
-
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LightningBoltIcon, MagicWandIcon } from "@radix-ui/react-icons";
-import {
-  AtomIcon,
-  BrainIcon,
-  FlameIcon,
-  Rabbit,
-  RabbitIcon,
-  SettingsIcon,
-  SparklesIcon,
-  WandSparklesIcon,
-} from "lucide-react";
+import { AtomIcon, BrainIcon, FlameIcon, Rabbit, RabbitIcon, SettingsIcon, SparklesIcon, WandSparklesIcon } from "lucide-react";
 import { useConfigStore, useChatStore } from "@/stores";
 import { ChatModel } from "../../generated";
 import { isCloudModel, isLocalModel } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
 import _ from "lodash";
 import { env } from "@/env.mjs";
 
@@ -95,22 +77,11 @@ export const modelMap: Record<ChatModel, Model> = {
   },
 };
 
-const localModelMap: Partial<Record<ChatModel, Model>> = _.pickBy(
-  modelMap,
-  (_, key) => isLocalModel(key as ChatModel),
-);
-
-const cloudModelMap: Partial<Record<ChatModel, Model>> = _.pickBy(
-  modelMap,
-  (_, key) => isCloudModel(key as ChatModel),
-);
+const localModelMap: Partial<Record<ChatModel, Model>> = _.pickBy(modelMap, (_, key) => isLocalModel(key as ChatModel));
+const cloudModelMap: Partial<Record<ChatModel, Model>> = _.pickBy(modelMap, (_, key) => isCloudModel(key as ChatModel));
 
 const ModelItem: React.FC<{ model: Model }> = ({ model }) => (
-  <SelectItem
-    key={model.value}
-    value={model.value}
-    className="flex flex-col items-start p-2"
-  >
+  <SelectItem key={model.value} value={model.value} className="flex flex-col items-start p-2">
     <div className="flex items-center space-x-2">
       {model.icon}
       <div className="flex flex-col">
@@ -124,10 +95,15 @@ const ModelItem: React.FC<{ model: Model }> = ({ model }) => (
 export function ModelSelection() {
   const { localMode, model, setModel, toggleLocalMode } = useConfigStore();
   const selectedModel = modelMap[model] ?? modelMap[ChatModel.GPT_4O_MINI];
+  const defaultModel = localStorage.getItem("defaultModel") || ChatModel.GPT_4O_MINI;
+
+  React.useEffect(() => {
+    localStorage.setItem("defaultModel", model);
+  }, [model]);
 
   return (
     <Select
-      defaultValue={model}
+      defaultValue={defaultModel}
       value={model}
       onValueChange={(value) => {
         if (value) {
@@ -159,11 +135,7 @@ export function ModelSelection() {
             <TabsTrigger value="cloud" className="flex-1">
               Cloud
             </TabsTrigger>
-            <TabsTrigger
-              value="local"
-              disabled={!env.NEXT_PUBLIC_LOCAL_MODE_ENABLED}
-              className="flex-1 disabled:opacity-50"
-            >
+            <TabsTrigger value="local" disabled={!env.NEXT_PUBLIC_LOCAL_MODE_ENABLED} className="flex-1 disabled:opacity-50">
               Local
             </TabsTrigger>
           </TabsList>

@@ -1,6 +1,5 @@
 import os
 from enum import Enum
-
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -11,13 +10,11 @@ class ChatModel(str, Enum):
     GPT_4o = "gpt-4o"
     GPT_4o_mini = "gpt-4o-mini"
     COMMAND_R = "command-r"
-
     # Local models
     LOCAL_LLAMA_3 = "llama3.1"
     LOCAL_GEMMA = "gemma"
     LOCAL_MISTRAL = "mistral"
     LOCAL_PHI3_14B = "phi3:14b"
-
     # Custom models
     CUSTOM = "custom"
 
@@ -39,12 +36,17 @@ def get_model_string(model: ChatModel) -> str:
         if custom_model is None:
             raise ValueError("CUSTOM_MODEL is not set")
         return custom_model
-
     if model in {ChatModel.GPT_4o_mini, ChatModel.GPT_4o}:
         openai_mode = os.environ.get("OPENAI_MODE", "openai")
         if openai_mode == "azure":
             # Currently deployments are named "gpt-35-turbo" and "gpt-4o"
             name = model_mappings[model].replace(".", "")
             return f"azure/{name}"
-
     return model_mappings[model]
+
+
+def get_default_model() -> ChatModel:
+    custom_model = os.environ.get("CUSTOM_MODEL")
+    if custom_model:
+        return ChatModel.CUSTOM
+    return ChatModel.GPT_4o_mini  # Fallback to GPT-4o-mini if CUSTOM_MODEL is not set
