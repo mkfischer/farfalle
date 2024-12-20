@@ -1,11 +1,10 @@
+# /Users/mfischer/Development/farfalle/src/backend/agent_search.py
 # This code is messy, this was originally an experiment
 import asyncio
 from typing import AsyncIterator
-
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-
 from backend.chat import rephrase_query_with_history
 from backend.constants import get_model_string
 from backend.db.chat import save_turn_to_db
@@ -34,6 +33,11 @@ from backend.schemas import (
 )
 from backend.search.search_service import perform_search
 from backend.utils import PRO_MODE_ENABLED, is_local_model
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class QueryPlanStep(BaseModel):
@@ -80,13 +84,11 @@ async def ranked_search_results_and_images_from_queries(
     )
     all_search_results = [response.results for response in search_responses]
     all_images = [response.images for response in search_responses]
-
     # interleave the search results, for fair ranking
     ranked_results: list[SearchResult] = [
         result for results in zip(*all_search_results) for result in results if result
     ]
     unique_results = list({result.url: result for result in ranked_results}.values())
-
     images = list({image: image for images in all_images for image in images}.values())
     return unique_results, images
 
@@ -115,25 +117,20 @@ async def stream_pro_search_objects(
     query_plan = llm.structured_complete(
         response_model=QueryPlan, prompt=query_plan_prompt
     )
-    print(query_plan)
-
+    logger.info(f"Generated query plan: {query_plan}")
     yield ChatResponseEvent(
         event=StreamEvent.AGENT_QUERY_PLAN,
         data=AgentQueryPlanStream(steps=[step.step for step in query_plan.steps]),
     )
-
     step_context: dict[int, StepContext] = {}
     search_result_map: dict[int, list[SearchResult]] = {}
     image_map: dict[int, list[str]] = {}
     agent_search_steps: list[AgentSearchStep] = []
-
     for idx, step in enumerate(query_plan.steps):
         step_id = step.id
         is_last_step = idx == len(query_plan.steps) - 1
         dependencies = step.dependencies
-
         relevant_context = [step_context[id] for id in dependencies]
-
         if not is_last_step:
             search_prompt = SEARCH_QUERY_PROMPT.format(
                 user_query=query,
@@ -149,21 +146,18 @@ async def stream_pro_search_objects(
                     status_code=500,
                     detail="There was an error generating the search queries",
                 )
-
             yield ChatResponseEvent(
                 event=StreamEvent.AGENT_SEARCH_QUERIES,
                 data=AgentSearchQueriesStream(
                     queries=search_queries, step_number=step_id
                 ),
             )
-
             (
                 search_results,
                 image_results,
             ) = await ranked_search_results_and_images_from_queries(search_queries)
             search_result_map[step_id] = search_results
             image_map[step_id] = image_results
-
             yield ChatResponseEvent(
                 event=StreamEvent.AGENT_READ_RESULTS,
                 data=AgentReadResultsStream(
@@ -172,7 +166,6 @@ async def stream_pro_search_objects(
             )
             context = build_context_from_search_results(search_results)
             step_context[step_id] = StepContext(step=step.step, context=context)
-
             agent_search_steps.append(
                 AgentSearchStep(
                     step_number=step_id,
@@ -187,43 +180,47 @@ async def stream_pro_search_objects(
                 event=StreamEvent.AGENT_FINISH,
                 data=AgentFinishStream(),
             )
-
             yield ChatResponseEvent(
                 event=StreamEvent.BEGIN_STREAM,
                 data=BeginStream(query=query),
             )
-
             # Get 12 results total, but distribute them evenly across dependencies
             relevant_result_map: dict[int, list[SearchResult]] = {
                 id: search_result_map[id] for id in dependencies
             }
             DESIRED_RESULT_COUNT = 12
-            total_results = sum(
-                len(results) for results in relevant_result_map.values()
-            )
-            results_per_dependency = min(
-                DESIRED_RESULT_COUNT // len(dependencies),
-                total_results // len(dependencies),
-            )
-            for id in dependencies:
-                relevant_result_map[id] = search_result_map[id][:results_per_dependency]
+            if dependencies:
+                total_results = sum(
+                    len(results) for results in relevant_result_map.values()
+                )
+                results_per_dependency = min(
+                    DESIRED_RESULT_COUNT // len(dependencies),
+                    total_results // len(dependencies),
+                )
+                for id in dependencies:
+                    relevant_result_map[id] = search_result_map[id][
+                        :results_per_dependency
+                    ]
+            else:
+                results_per_dependency = 0
+                logger.warning(
+                    "No dependencies found for the final step. Using all available results."
+                )
+                relevant_result_map = search_result_map
 
             search_results = [
                 result for results in relevant_result_map.values() for result in results
             ]
-
             # Remove duplicates
             search_results = list(
                 {result.url: result for result in search_results}.values()
             )
             images = [image for id in dependencies for image in image_map[id][:2]]
-
             related_queries_task = None
             if not is_local_model(request.model):
                 related_queries_task = asyncio.create_task(
                     generate_related_queries(query, search_results, llm)
                 )
-
             yield ChatResponseEvent(
                 event=StreamEvent.SEARCH_RESULTS,
                 data=SearchResultStream(
@@ -231,12 +228,10 @@ async def stream_pro_search_objects(
                     images=images,
                 ),
             )
-
             fmt_qa_prompt = CHAT_PROMPT.format(
                 my_context=format_context_with_steps(search_result_map, step_context),
                 my_query=query,
             )
-
             full_response = ""
             response_gen = await llm.astream(fmt_qa_prompt)
             async for completion in response_gen:
@@ -245,23 +240,19 @@ async def stream_pro_search_objects(
                     event=StreamEvent.TEXT_CHUNK,
                     data=TextChunkStream(text=completion.delta or ""),
                 )
-
             related_queries = await (
                 related_queries_task
                 if related_queries_task
                 else generate_related_queries(query, search_results, llm)
             )
-
             yield ChatResponseEvent(
                 event=StreamEvent.RELATED_QUERIES,
                 data=RelatedQueriesStream(related_queries=related_queries),
             )
-
             yield ChatResponseEvent(
                 event=StreamEvent.FINAL_RESPONSE,
                 data=FinalResponseStream(message=full_response),
             )
-
             agent_search_steps.append(
                 AgentSearchStep(
                     step_number=step_id,
@@ -271,7 +262,6 @@ async def stream_pro_search_objects(
                     status=AgentSearchStepStatus.DONE,
                 )
             )
-
             thread_id = save_turn_to_db(
                 session=session,
                 thread_id=request.thread_id,
@@ -286,7 +276,6 @@ async def stream_pro_search_objects(
                 image_results=images,
                 related_queries=related_queries,
             )
-
             yield ChatResponseEvent(
                 event=StreamEvent.STREAM_END,
                 data=StreamEndStream(thread_id=thread_id),
@@ -303,15 +292,19 @@ async def stream_pro_search_qa(
                 status_code=400,
                 detail="Pro mode is not enabled, self-host to enable it at https://github.com/rashadphz/farfalle",
             )
-
         model_name = get_model_string(request.model)
         llm = EveryLLM(model=model_name)
-
         query = rephrase_query_with_history(request.query, request.history, llm)
         async for event in stream_pro_search_objects(request, llm, query, session):
             yield event
             await asyncio.sleep(0)
-
+    except ZeroDivisionError as e:
+        logger.error(f"ZeroDivisionError occurred: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="No dependencies found for the final step. Please try a different query or check the query plan.",
+        )
     except Exception as e:
+        logger.error(f"An unexpected error occurred: {e}")
         detail = str(e)
         raise HTTPException(status_code=500, detail=detail)

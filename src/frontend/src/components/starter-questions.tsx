@@ -1,17 +1,13 @@
 import { ArrowUpRight } from "lucide-react";
 
 const starterQuestions = [
-  "what is farfalle?",
-  "openai scarlett johansson?",
-  "what is groq?",
-  "what happened to ilya?",
+  "What is the smell of a green thought?",
+  "Write instructions for a soup sandwich.",
+  "Write a python hello world application that prints hello world in a random color.",
+  "What is a good recipe for an authentic pierogi?",
 ];
 
-export const StarterQuestionsList = ({
-  handleSend,
-}: {
-  handleSend: (question: string) => void;
-}) => {
+export const StarterQuestionsList = ({ handleSend }: { handleSend: (question: string) => void }) => {
   return (
     <ul className="flex flex-col space-y-1 pt-2">
       {starterQuestions.map((question) => (
