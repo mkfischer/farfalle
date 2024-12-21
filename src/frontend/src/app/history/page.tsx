@@ -26,7 +26,7 @@ export default function RecentsPage() {
         <Separator className="mb-4" />
 
         {/* Button to trigger the toast */}
-        <Button onClick={() => setShowToast(true)}>Show Toast</Button>
+        <Button onClick={() => setShowToast(true)}>Clear History</Button>
 
         {/* Toast Modal */}
         <ToastProvider>
@@ -34,8 +34,13 @@ export default function RecentsPage() {
             <Toast open={showToast} onOpenChange={setShowToast}>
               {" "}
               {/* Control visibility with state */}
-              <ToastTitle>Toast Title</ToastTitle>
-              <ToastDescription>This is a toast message.</ToastDescription>
+              <ToastTitle>Are you sure?</ToastTitle>
+              <ToastDescription>This will clear the history.</ToastDescription>
+              <Button variant="destructive" size="sm" onClick={() => setShowToast(false)}>
+                {" "}
+                {/* Continue deleting the database*/}
+                Continue
+              </Button>
               <Button variant="destructive" size="sm" onClick={() => setShowToast(false)}>
                 {" "}
                 {/* Close button for toast*/}
