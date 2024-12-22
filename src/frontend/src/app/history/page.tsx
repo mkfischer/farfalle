@@ -50,7 +50,7 @@ export default function RecentsPage() {
           <h1 className="text-xl font-semibold">Chat History</h1>
         </div>
         <Separator className="mb-4" />
-        <Button onClick={handleClearHistory}>Clear History</Button>
+        <Button onClick={() => setShowToast(true)}>Clear History</Button>
         <ToastProvider>
           {showToast && (
             <Toast open={showToast} onOpenChange={(open) => setShowToast(open)}>
