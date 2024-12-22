@@ -12,7 +12,7 @@ const NewChatButton = () => {
   return (
     <Button variant="secondary" size="sm" onClick={() => (location.href = "/")}>
       <PlusIcon className="w-4 h-4" />
-      <span className="block">&nbsp;&nbsp;New</span>
+      <span className="block">&nbsp;&nbsp;New Search</span>
     </Button>
   );
 };
@@ -32,11 +32,7 @@ export function Navbar() {
     <header className="w-full flex fixed p-1 z-50 px-2 bg-background/95 justify-between items-center">
       <div className="flex items-center gap-2">
         <Link href="/" passHref onClick={() => (location.href = "/")}>
-          <img
-            src={theme === "light" ? "/logo-black.png" : "/logo-white.png"}
-            alt="Logo"
-            className="w-12 h-12"
-          />
+          <img src={theme === "light" ? "/logo-black.png" : "/logo-white.png"} alt="Logo" className="w-12 h-12" />
         </Link>
         {onHomePage ? <TextLogo /> : <NewChatButton />}
       </div>
