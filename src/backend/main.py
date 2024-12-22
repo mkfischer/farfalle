@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 import traceback
 from typing import Generator
@@ -17,7 +18,7 @@ from sse_starlette.sse import EventSourceResponse, ServerSentEvent
 
 from backend.agent_search import stream_pro_search_qa
 from backend.chat import stream_qa_objects
-from backend.db.chat import get_chat_history, get_thread
+from backend.db.chat import get_chat_history, get_thread, delete_chat_history
 from backend.db.engine import get_session
 from backend.schemas import (
     ChatHistoryResponse,
@@ -31,6 +32,8 @@ from backend.utils import strtobool
 from backend.validators import validate_model
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)  # Create a logger instance
 
 
 def create_error_event(detail: str):
@@ -114,7 +117,9 @@ async def chat(
                 yield json.dumps(jsonable_encoder(obj))
                 await asyncio.sleep(0)
         except Exception as e:
-            print(traceback.format_exc())
+            logger.exception(
+                f"Error in chat endpoint: {e}"
+            )  # Log the exception properly
             yield create_error_event(str(e))
             await asyncio.sleep(0)
             return
@@ -130,6 +135,7 @@ async def recents(session: Session = Depends(get_session)) -> ChatHistoryRespons
             history = get_chat_history(session=session)
             return ChatHistoryResponse(snapshots=history)
         except Exception as e:
+            logger.exception(f"Error fetching chat history: {e}")  # Log the exception
             raise HTTPException(status_code=500, detail=str(e))
     else:
         raise HTTPException(
@@ -144,3 +150,15 @@ async def thread(
 ) -> ThreadResponse:
     thread = get_thread(session=session, thread_id=thread_id)
     return thread
+
+
+@app.delete("/history")
+async def delete_history(session: Session = Depends(get_session)):
+    try:
+        logger.info("Attempting to delete chat history...")
+        delete_chat_history(session=session)
+        logger.info("Chat history deleted successfully.")
+        return {"message": "History cleared successfully"}
+    except Exception as e:
+        logger.exception(f"Error clearing history: {e}")
+        raise HTTPException(status_code=500, detail=f"Error clearing history: {e}")
