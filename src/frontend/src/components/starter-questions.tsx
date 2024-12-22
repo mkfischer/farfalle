@@ -4,7 +4,7 @@ const starterQuestions = [
   "What is the smell of a green thought?",
   "Write instructions for a soup sandwich.",
   "Write a python hello world application that prints hello world in a random color.",
-  "What is a good recipe for an authentic pierogi?",
+  "Write a recipe for an authentic pierogi?",
 ];
 
 export const StarterQuestionsList = ({ handleSend }: { handleSend: (question: string) => void }) => {
