@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import AsyncIterator, List
 
 from fastapi import HTTPException
@@ -25,13 +26,29 @@ from backend.schemas import (
 from backend.search.search_service import perform_search
 from backend.utils import is_local_model
 
+# Create a logger instance for logging purposes
+logger = logging.getLogger(__name__)
+
 
 def rephrase_query_with_history(
     question: str, history: List[Message], llm: BaseLLM
 ) -> str:
-    if not history:
-        return question
+    """Rephrases the given question using the provided chat history and LLM.
 
+    Args:
+        question: The question to rephrase.
+        history: The chat history.
+        llm: The language model to use for rephrasing.
+
+    Returns:
+        The rephrased question.  Returns the original question if there is no history.
+
+    Raises:
+        HTTPException: If the model is at capacity.
+    """
+    if not history:
+        logger.info(f"The searched question is {question}")
+        return question
     try:
         history_str = "\n".join(f"{msg.role}: {msg.content}" for msg in history)
         formatted_query = HISTORY_QUERY_REPHRASE.format(
@@ -46,6 +63,14 @@ def rephrase_query_with_history(
 
 
 def format_context(search_results: List[SearchResult]) -> str:
+    """Formats the search results into a string suitable for use as context.
+
+    Args:
+        search_results: The search results to format.
+
+    Returns:
+        A string containing the formatted search results.
+    """
     return "\n\n".join(
         [f"Citation {i+1}. {str(result)}" for i, result in enumerate(search_results)]
     )
@@ -54,29 +79,35 @@ def format_context(search_results: List[SearchResult]) -> str:
 async def stream_qa_objects(
     request: ChatRequest, session: Session
 ) -> AsyncIterator[ChatResponseEvent]:
+    """Streams QA objects.
+
+    Args:
+        request: The chat request.
+        session: The database session.
+
+    Yields:
+        ChatResponseEvent:  A stream of chat response events.
+
+    Raises:
+        HTTPException: If an error occurs during processing.
+    """
     try:
         model_name = get_model_string(request.model)
         llm = EveryLLM(model=model_name)
-
         yield ChatResponseEvent(
             event=StreamEvent.BEGIN_STREAM,
             data=BeginStream(query=request.query),
         )
-
         query = rephrase_query_with_history(request.query, request.history, llm)
-
         search_response = await perform_search(query)
-
         search_results = search_response.results
         images = search_response.images
-
         # Only create the task first if the model is not local
         related_queries_task = None
         if not is_local_model(request.model):
             related_queries_task = asyncio.create_task(
                 generate_related_queries(query, search_results, llm)
             )
-
         yield ChatResponseEvent(
             event=StreamEvent.SEARCH_RESULTS,
             data=SearchResultStream(
@@ -84,12 +115,10 @@ async def stream_qa_objects(
                 images=images,
             ),
         )
-
         fmt_qa_prompt = CHAT_PROMPT.format(
             my_context=format_context(search_results),
             my_query=query,
         )
-
         full_response = ""
         response_gen = await llm.astream(fmt_qa_prompt)
         async for completion in response_gen:
@@ -98,18 +127,15 @@ async def stream_qa_objects(
                 event=StreamEvent.TEXT_CHUNK,
                 data=TextChunkStream(text=completion.delta or ""),
             )
-
         related_queries = await (
             related_queries_task
             if related_queries_task
             else generate_related_queries(query, search_results, llm)
         )
-
         yield ChatResponseEvent(
             event=StreamEvent.RELATED_QUERIES,
             data=RelatedQueriesStream(related_queries=related_queries),
         )
-
         thread_id = save_turn_to_db(
             session=session,
             thread_id=request.thread_id,
@@ -120,17 +146,14 @@ async def stream_qa_objects(
             image_results=images,
             related_queries=related_queries,
         )
-
         yield ChatResponseEvent(
             event=StreamEvent.FINAL_RESPONSE,
             data=FinalResponseStream(message=full_response),
         )
-
         yield ChatResponseEvent(
             event=StreamEvent.STREAM_END,
             data=StreamEndStream(thread_id=thread_id),
         )
-
     except Exception as e:
         detail = str(e)
         raise HTTPException(status_code=500, detail=detail)

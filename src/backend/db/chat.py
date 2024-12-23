@@ -23,6 +23,16 @@ logging.basicConfig(
 
 
 def create_chat_thread(*, session: Session, model_name: str):
+    """
+    Creates a new chat thread in the database.
+
+    Args:
+        session: The SQLAlchemy database session.
+        model_name: The name of the model used for the chat thread.
+
+    Returns:
+        The created DBChatThread object.
+    """
     logging.debug(f"Creating chat thread for model: {model_name}")
     chat_thread = DBChatThread(model_name=model_name)
     session.add(chat_thread)
@@ -34,6 +44,17 @@ def create_chat_thread(*, session: Session, model_name: str):
 def create_search_results(
     *, session: Session, search_results: list[SearchResult], chat_message_id: int
 ) -> list[DBSearchResult]:
+    """
+    Creates search results associated with a chat message.
+
+    Args:
+        session: The SQLAlchemy database session.
+        search_results: A list of SearchResult objects.
+        chat_message_id: The ID of the chat message.
+
+    Returns:
+        A list of created DBSearchResult objects.
+    """
     logging.debug(f"Creating search results for chat message ID: {chat_message_id}")
     db_search_results = [
         DBSearchResult(
@@ -60,6 +81,22 @@ def append_message(
     image_results: list[str] | None = None,
     related_queries: list[str] | None = None,
 ):
+    """
+    Appends a message to an existing chat thread.
+
+    Args:
+        session: The SQLAlchemy database session.
+        thread_id: The ID of the chat thread.
+        role: The role of the message sender (USER or ASSISTANT).
+        content: The content of the message.
+        search_results: An optional list of search results.
+        image_results: An optional list of image results.
+        related_queries: An optional list of related queries.
+
+    Returns:
+        The created DBChatMessage object.
+
+    """
     logging.debug(f"Appending message to thread ID: {thread_id}, role: {role}")
     last_message = (
         session.query(DBChatMessage)
@@ -91,6 +128,23 @@ def create_message(
     image_results: list[str] | None = None,
     related_queries: list[str] | None = None,
 ):
+    """
+    Creates a new chat message in the database.
+
+    Args:
+        session: The SQLAlchemy database session.
+        thread_id: The ID of the chat thread.
+        role: The role of the message sender (USER or ASSISTANT).
+        content: The content of the message.
+        parent_message_id: The ID of the parent message, if any.
+        agent_search_full_response:  Optional agent search response.
+        search_results: An optional list of search results.
+        image_results: An optional list of image results.
+        related_queries: An optional list of related queries.
+
+    Returns:
+        The created DBChatMessage object.
+    """
     logging.debug(f"Creating message for thread ID: {thread_id}, role: {role}")
     message = DBChatMessage(
         chat_thread_id=thread_id,
@@ -131,6 +185,23 @@ def save_turn_to_db(
     image_results: list[str] | None = None,
     related_queries: list[str] | None = None,
 ) -> int | None:
+    """
+    Saves a user-assistant turn to the database.
+
+    Args:
+        session: The SQLAlchemy database session.
+        thread_id: The ID of the chat thread, if it exists.
+        user_message: The user's message.
+        assistant_message: The assistant's message.
+        model: The name of the model used.
+        agent_search_full_response: Optional agent search response.
+        search_results: An optional list of search results.
+        image_results: An optional list of image results.
+        related_queries: An optional list of related queries.
+
+    Returns:
+        The ID of the chat thread, or None if DB_ENABLED is False.
+    """
     logging.debug("Saving turn to database")
     if DB_ENABLED:
         if thread_id is None:
@@ -162,6 +233,15 @@ def save_turn_to_db(
 
 
 def get_chat_history(*, session: Session) -> list[ChatSnapshot]:
+    """
+    Retrieves the chat history from the database.
+
+    Args:
+        session: The SQLAlchemy database session.
+
+    Returns:
+        A list of ChatSnapshot objects.
+    """
     logging.debug("Retrieving chat history")
     threads = (
         session.query(DBChatThread)
@@ -192,6 +272,15 @@ def get_chat_history(*, session: Session) -> list[ChatSnapshot]:
 
 
 def map_search_result(search_result: DBSearchResult) -> SearchResult:
+    """
+    Maps a DBSearchResult object to a SearchResult object.
+
+    Args:
+        search_result: The DBSearchResult object.
+
+    Returns:
+        The SearchResult object.
+    """
     logging.debug("Mapping search result")
     return SearchResult(
         url=search_result.url,
@@ -201,6 +290,19 @@ def map_search_result(search_result: DBSearchResult) -> SearchResult:
 
 
 def get_thread(*, session: Session, thread_id: int) -> ThreadResponse:
+    """
+    Retrieves a chat thread from the database.
+
+    Args:
+        session: The SQLAlchemy database session.
+        thread_id: The ID of the chat thread.
+
+    Returns:
+        A ThreadResponse object.
+
+    Raises:
+        ValueError: If the thread is not found.
+    """
     logging.debug(f"Retrieving thread with ID: {thread_id}")
     stmt = (
         select(DBChatMessage)
@@ -234,7 +336,15 @@ def get_thread(*, session: Session, thread_id: int) -> ThreadResponse:
 
 
 def delete_chat_history(*, session: Session):
-    """Deletes all chat history from the database."""
+    """
+    Deletes all chat history from the database.
+
+    Args:
+        session: The SQLAlchemy database session.
+
+    Raises:
+        Exception: If an error occurs during deletion.
+    """
     logging.warning("Deleting all chat history from the database")
     try:
         session.execute(delete(DBSearchResult))  # Delete from search_result first

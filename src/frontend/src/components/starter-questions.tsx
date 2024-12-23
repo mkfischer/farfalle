@@ -1,8 +1,8 @@
 import { ArrowUpRight } from "lucide-react";
 
 const starterQuestions = [
-  "What is the smell of a green thought?",
-  "Write instructions for a soup sandwich.",
+  "What does chicken taste like?",
+  "Write clear instructions on how to make a peanut butter sandwich.",
   "Write a python hello world application that prints hello world in a random color.",
   "Write a recipe for an authentic pierogi?",
 ];

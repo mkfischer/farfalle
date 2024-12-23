@@ -31,12 +31,23 @@ from backend.schemas import (
 from backend.utils import strtobool
 from backend.validators import validate_model
 
+# Load environment variables from .env file
 load_dotenv()
 
-logger = logging.getLogger(__name__)  # Create a logger instance
+# Create a logger instance for logging purposes
+logger = logging.getLogger(__name__)
 
 
-def create_error_event(detail: str):
+def create_error_event(detail: str) -> ServerSentEvent:
+    """
+    Creates an error event in the Server-Sent Events (SSE) format.
+
+    Args:
+        detail (str): The error message to include in the event.
+
+    Returns:
+        ServerSentEvent: An SSE-formatted error event.
+    """
     obj = ChatResponseEvent(
         data=ErrorStream(detail=detail),
         event=StreamEvent.ERROR,
@@ -48,12 +59,34 @@ def create_error_event(detail: str):
 
 
 def configure_logging(app: FastAPI, logfire_token: str | None):
+    """
+    Configures logging for the application.
+
+    If a Logfire token is provided, it configures and instruments the FastAPI app with Logfire.
+
+    Args:
+        app (FastAPI): The FastAPI application instance.
+        logfire_token (str | None): The Logfire token for logging. If None, no logging configuration will be done.
+    """
     if logfire_token:
         logfire.configure()
         logfire.instrument_fastapi(app)
 
 
-async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+async def rate_limit_exceeded_handler(
+    request: Request, exc: RateLimitExceeded
+) -> EventSourceResponse:
+    """
+    Handles rate limit exceeded exceptions by returning an error event in the SSE format.
+
+    Args:
+        request (Request): The incoming HTTP request.
+        exc (RateLimitExceeded): The exception raised when the rate limit is exceeded.
+
+    Returns:
+        EventSourceResponse: An SSE response containing an error event.
+    """
+
     def generator():
         yield create_error_event("Rate limit exceeded, please try again later.")
 
@@ -66,6 +99,14 @@ async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
 def configure_rate_limiting(
     app: FastAPI, rate_limit_enabled: bool, redis_url: str | None
 ):
+    """
+    Configures rate limiting for the application.
+
+    Args:
+        app (FastAPI): The FastAPI application instance.
+        rate_limit_enabled (bool): A flag indicating whether rate limiting should be enabled.
+        redis_url (str | None): The Redis URL to use for storing rate limit information. If None, rate limiting will not be enabled.
+    """
     limiter = Limiter(
         key_func=get_ipaddr,
         enabled=strtobool(rate_limit_enabled) and redis_url is not None,
@@ -76,6 +117,14 @@ def configure_rate_limiting(
 
 
 def configure_middleware(app: FastAPI):
+    """
+    Configures middleware for the application.
+
+    Adds CORS (Cross-Origin Resource Sharing) middleware to allow requests from any origin.
+
+    Args:
+        app (FastAPI): The FastAPI application instance.
+    """
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -86,6 +135,12 @@ def configure_middleware(app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    """
+    Creates and configures a new FastAPI application.
+
+    Returns:
+        FastAPI: A configured FastAPI application instance.
+    """
     app = FastAPI()
     configure_middleware(app)
     configure_logging(app, os.getenv("LOGFIRE_TOKEN"))
@@ -97,6 +152,7 @@ def create_app() -> FastAPI:
     return app
 
 
+# Create the FastAPI application
 app = create_app()
 
 
@@ -105,6 +161,18 @@ app = create_app()
 async def chat(
     chat_request: ChatRequest, request: Request, session: Session = Depends(get_session)
 ) -> Generator[ChatResponseEvent, None, None]:
+    """
+    Handles incoming chat requests.
+
+    Args:
+        chat_request (ChatRequest): The chat request data.
+        request (Request): The incoming HTTP request.
+        session (Session): A database session dependency.
+
+    Returns:
+        Generator[ChatResponseEvent, None, None]: A generator yielding chat response events in the SSE format.
+    """
+
     async def generator():
         try:
             validate_model(chat_request.model)
@@ -129,6 +197,15 @@ async def chat(
 
 @app.get("/history")
 async def recents(session: Session = Depends(get_session)) -> ChatHistoryResponse:
+    """
+    Retrieves the chat history.
+
+    Args:
+        session (Session): A database session dependency.
+
+    Returns:
+        ChatHistoryResponse: The chat history response containing snapshots of past conversations.
+    """
     DB_ENABLED = strtobool(os.environ.get("DB_ENABLED", "true"))
     if DB_ENABLED:
         try:
@@ -148,12 +225,31 @@ async def recents(session: Session = Depends(get_session)) -> ChatHistoryRespons
 async def thread(
     thread_id: int, session: Session = Depends(get_session)
 ) -> ThreadResponse:
+    """
+    Retrieves a specific chat thread.
+
+    Args:
+        thread_id (int): The ID of the chat thread to retrieve.
+        session (Session): A database session dependency.
+
+    Returns:
+        ThreadResponse: The response containing details of the specified chat thread.
+    """
     thread = get_thread(session=session, thread_id=thread_id)
     return thread
 
 
 @app.delete("/history")
 async def delete_history(session: Session = Depends(get_session)):
+    """
+    Deletes the chat history.
+
+    Args:
+        session (Session): A database session dependency.
+
+    Returns:
+        dict: A response indicating successful deletion of the chat history.
+    """
     try:
         logger.info("Attempting to delete chat history...")
         delete_chat_history(session=session)

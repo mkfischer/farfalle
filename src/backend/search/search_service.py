@@ -1,10 +1,14 @@
+"""
+This module provides functions for performing searches using different search providers and caching the results.
+
+It utilizes environment variables to configure the search provider and API keys.  Results are cached in Redis for performance.
+"""
+
 import json
 import os
-
 import redis
 from dotenv import load_dotenv
 from fastapi import HTTPException
-
 from backend.schemas import SearchResponse
 from backend.search.providers.base import SearchProvider
 from backend.search.providers.bing import BingSearchProvider
@@ -12,14 +16,21 @@ from backend.search.providers.searxng import SearxngSearchProvider
 from backend.search.providers.serper import SerperSearchProvider
 from backend.search.providers.tavily import TavilySearchProvider
 
+# Load environment variables from .env file
 load_dotenv()
 
-
+# Initialize Redis client if REDIS_URL is set
 redis_url = os.getenv("REDIS_URL")
 redis_client = redis.Redis.from_url(redis_url) if redis_url else None
 
 
 def get_searxng_base_url():
+    """
+    Retrieves the SearXNG base URL from environment variables.
+
+    Raises:
+        HTTPException: If SEARXNG_BASE_URL is not set.
+    """
     searxng_base_url = os.getenv("SEARXNG_BASE_URL")
     if not searxng_base_url:
         raise HTTPException(
@@ -30,6 +41,12 @@ def get_searxng_base_url():
 
 
 def get_tavily_api_key():
+    """
+    Retrieves the Tavily API key from environment variables.
+
+    Raises:
+        HTTPException: If TAVILY_API_KEY is not set.
+    """
     tavily_api_key = os.getenv("TAVILY_API_KEY")
     if not tavily_api_key:
         raise HTTPException(
@@ -40,6 +57,12 @@ def get_tavily_api_key():
 
 
 def get_serper_api_key():
+    """
+    Retrieves the Serper API key from environment variables.
+
+    Raises:
+        HTTPException: If SERPER_API_KEY is not set.
+    """
     serper_api_key = os.getenv("SERPER_API_KEY")
     if not serper_api_key:
         raise HTTPException(
@@ -50,6 +73,12 @@ def get_serper_api_key():
 
 
 def get_bing_api_key():
+    """
+    Retrieves the Bing API key from environment variables.
+
+    Raises:
+        HTTPException: If BING_API_KEY is not set.
+    """
     bing_api_key = os.getenv("BING_API_KEY")
     if not bing_api_key:
         raise HTTPException(
@@ -60,8 +89,16 @@ def get_bing_api_key():
 
 
 def get_search_provider() -> SearchProvider:
-    search_provider = os.getenv("SEARCH_PROVIDER", "searxng")
+    """
+    Selects and returns the appropriate search provider based on the SEARCH_PROVIDER environment variable.
 
+    Returns:
+        SearchProvider: The selected search provider instance.
+
+    Raises:
+        HTTPException: If the SEARCH_PROVIDER environment variable is invalid.
+    """
+    search_provider = os.getenv("SEARCH_PROVIDER", "searxng")
     match search_provider:
         case "searxng":
             searxng_base_url = get_searxng_base_url()
@@ -83,19 +120,27 @@ def get_search_provider() -> SearchProvider:
 
 
 async def perform_search(query: str) -> SearchResponse:
-    search_provider = get_search_provider()
+    """
+    Performs a search using the selected search provider and caches the results in Redis.
 
+    Args:
+        query: The search query.
+
+    Returns:
+        SearchResponse: The search results.
+
+    Raises:
+        HTTPException: If there is an error during the search.
+    """
+    search_provider = get_search_provider()
     try:
         cache_key = f"search:{query}"
         if redis_client and (cached_results := redis_client.get(cache_key)):
             cached_json = json.loads(json.loads(cached_results.decode("utf-8")))  # type: ignore
             return SearchResponse(**cached_json)
-
         results = await search_provider.search(query)
-
         if redis_client:
             redis_client.set(cache_key, json.dumps(results.model_dump_json()), ex=7200)
-
         return results
     except Exception:
         raise HTTPException(

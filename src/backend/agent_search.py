@@ -1,5 +1,6 @@
 # /Users/mfischer/Development/farfalle/src/backend/agent_search.py
 # This code is messy, this was originally an experiment
+
 import asyncio
 from typing import AsyncIterator
 from fastapi import HTTPException
@@ -41,6 +42,15 @@ logger = logging.getLogger(__name__)
 
 
 class QueryPlanStep(BaseModel):
+    """
+    Represents a step in the query plan.
+
+    Attributes:
+        id (int): Unique identifier for the step.
+        step (str): Description of the step.
+        dependencies (list[int]): List of step IDs that this step depends on.
+    """
+
     id: int = Field(..., description="Unique id of the step")
     step: str
     dependencies: list[int] = Field(
@@ -51,12 +61,26 @@ class QueryPlanStep(BaseModel):
 
 
 class QueryPlan(BaseModel):
+    """
+    Represents the overall query plan.
+
+    Attributes:
+        steps (list[QueryPlanStep]): List of query plan steps.
+    """
+
     steps: list[QueryPlanStep] = Field(
         ..., description="The steps to complete the query", max_length=4
     )
 
 
 class QueryStepExecution(BaseModel):
+    """
+    Represents the execution of a query step.
+
+    Attributes:
+        search_queries (list[str]): List of search queries generated for this step.
+    """
+
     search_queries: list[str] | None = Field(
         ...,
         description="The search queries to complete the step",
@@ -66,11 +90,28 @@ class QueryStepExecution(BaseModel):
 
 
 class StepContext(BaseModel):
+    """
+    Represents the context associated with a step.
+
+    Attributes:
+        step (str): Description of the step.
+        context (str): Contextual information related to the step.
+    """
+
     step: str
     context: str
 
 
 def format_step_context(step_contexts: list[StepContext]) -> str:
+    """
+    Formats the provided step contexts into a single string.
+
+    Args:
+        step_contexts (list[StepContext]): List of StepContext objects.
+
+    Returns:
+        str: A formatted string containing all step contexts.
+    """
     return "\n".join(
         [f"Step: {step.step}\nContext: {step.context}" for step in step_contexts]
     )
@@ -79,6 +120,16 @@ def format_step_context(step_contexts: list[StepContext]) -> str:
 async def ranked_search_results_and_images_from_queries(
     queries: list[str],
 ) -> tuple[list[SearchResult], list[str]]:
+    """
+    Performs searches using the provided queries and returns interleaved results.
+
+    Args:
+        queries (list[str]): List of search queries.
+
+    Returns:
+        tuple[list[SearchResult], list[str]]: A tuple containing a list of unique search results
+                                             and a list of unique images.
+    """
     search_responses: list[SearchResponse] = await asyncio.gather(
         *(perform_search(query) for query in queries)
     )
@@ -94,6 +145,15 @@ async def ranked_search_results_and_images_from_queries(
 
 
 def build_context_from_search_results(search_results: list[SearchResult]) -> str:
+    """
+    Builds a context string from the provided search results.
+
+    Args:
+        search_results (list[SearchResult]): List of SearchResult objects.
+
+    Returns:
+        str: A string containing all search results formatted as a single context.
+    """
     context = "\n".join(str(result) for result in search_results)
     return context[:7000]
 
@@ -102,6 +162,16 @@ def format_context_with_steps(
     search_results_map: dict[int, list[SearchResult]],
     step_contexts: dict[int, StepContext],
 ) -> str:
+    """
+    Formats the provided search results and step contexts into a single string.
+
+    Args:
+        search_results_map (dict[int, list[SearchResult]]): Mapping of step IDs to their search results.
+        step_contexts (dict[int, StepContext]): Mapping of step IDs to their context information.
+
+    Returns:
+        str: A formatted string containing all step contexts and their associated search results.
+    """
     context = "\n".join(
         f"Everything below is context for step: {step_contexts[step_id].step}\nContext: {build_context_from_search_results(search_results_map[step_id])}\n{'-'*20}\n"
         for step_id in sorted(step_contexts.keys())
@@ -113,6 +183,18 @@ def format_context_with_steps(
 async def stream_pro_search_objects(
     request: ChatRequest, llm: BaseLLM, query: str, session: Session
 ) -> AsyncIterator[ChatResponseEvent]:
+    """
+    Streams the search process and related responses.
+
+    Args:
+        request (ChatRequest): The chat request containing user input.
+        llm (BaseLLM): The language model used for generating queries and responses.
+        query (str): The rephrased query to be processed.
+        session (Session): SQLAlchemy session object for database interactions.
+
+    Yields:
+        ChatResponseEvent: A stream of events related to the search process.
+    """
     query_plan_prompt = QUERY_PLAN_PROMPT.format(query=query)
     query_plan = llm.structured_complete(
         response_model=QueryPlan, prompt=query_plan_prompt
@@ -207,7 +289,6 @@ async def stream_pro_search_objects(
                     "No dependencies found for the final step. Using all available results."
                 )
                 relevant_result_map = search_result_map
-
             search_results = [
                 result for results in relevant_result_map.values() for result in results
             ]
@@ -286,6 +367,16 @@ async def stream_pro_search_objects(
 async def stream_pro_search_qa(
     request: ChatRequest, session: Session
 ) -> AsyncIterator[ChatResponseEvent]:
+    """
+    Streams the QA process using the provided request and database session.
+
+    Args:
+        request (ChatRequest): The chat request containing user input.
+        session (Session): SQLAlchemy session object for database interactions.
+
+    Yields:
+        ChatResponseEvent: A stream of events related to the QA process.
+    """
     try:
         if not PRO_MODE_ENABLED:
             raise HTTPException(
